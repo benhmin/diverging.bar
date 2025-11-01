@@ -1,0 +1,24 @@
+Package: diverging.bar
+Type: Package
+Title: Diverging Stacked Bar Charts for Likert Scale Data
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Ben", "Orwoll",
+      email = "orwollb@ohsu.edu",
+      role = c("aut", "cre")
+    )
+  )
+Description: Provides a function to create diverging stacked bar charts (Likert plots) for survey or questionnaire data with ordered categorical responses. The function centers the chart around a neutral midpoint, with negative responses on the left and positive responses on the right.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports:
+  ggplot2,
+  dplyr,
+  tidyr,
+  RColorBrewer,
+  scales
+Suggests:
+  testthat
+RoxygenNote: 7.3.3
