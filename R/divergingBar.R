@@ -58,9 +58,13 @@
 #' # Custom palette
 #' plot_likert_diverging(palette = "PuOr", reverse_palette = TRUE)
 #'
-#' @import ggplot2
-#' @import dplyr
-#' @import tidyr
+#' @importFrom ggplot2 ggplot aes geom_rect geom_text scale_fill_manual
+#'   scale_y_continuous scale_x_continuous labs theme_minimal theme
+#'   facet_wrap element_blank element_text
+#' @importFrom dplyr rename mutate filter group_by ungroup summarise
+#'   arrange bind_rows recode n all_of first case_when
+#' @importFrom tidyr fill
+#' @importFrom rlang sym
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom scales percent_format
 #'
@@ -82,11 +86,11 @@ plot_likert_diverging <- function(
   percentage_size = 3
 ) {
   # Load required packages
-  require(ggplot2)
-  require(dplyr)
-  require(tidyr)
-  require(RColorBrewer)
-  require(scales)
+  library(ggplot2, quietly = TRUE, warn.conflicts = FALSE)
+  library(dplyr, quietly = TRUE, warn.conflicts = FALSE)
+  library(tidyr, quietly = TRUE, warn.conflicts = FALSE)
+  library(RColorBrewer, quietly = TRUE, warn.conflicts = FALSE)
+  library(scales, quietly = TRUE, warn.conflicts = FALSE)
 
   # Generate sample data if none provided
   if (is.null(data)) {
@@ -118,7 +122,10 @@ plot_likert_diverging <- function(
 
   # Rename columns to standard names for internal processing
   data <- data |>
-    rename(item_var = all_of(item_col), response_var = all_of(response_col))
+    rename(
+      item_var = !!rlang::sym(item_col),
+      response_var = !!rlang::sym(response_col)
+    )
 
   # Determine response order
   if (is.null(response_order)) {
@@ -169,7 +176,8 @@ plot_likert_diverging <- function(
   # Calculate percentages for each item-response combination
   plot_data <- data |>
     group_by(item_var, response_var, .drop = FALSE) |>
-    summarise(count = n(), .groups = "drop_last") |>
+    summarise(count = n(), .groups = "drop") |>
+    group_by(item_var) |>
     mutate(
       total = sum(count),
       percentage = count / total * 100
@@ -206,48 +214,48 @@ plot_likert_diverging <- function(
     filter(response_type == "negative") |>
     group_by(item_var) |>
     arrange(item_var, response_var) |> # Least negative closest to center
+    mutate(cum_pct = cumsum(percentage)) |>
+    ungroup() |>
+    left_join(
+      plot_data |>
+        filter(response_type == "center") |>
+        select(item_var, center_pct = percentage),
+      by = "item_var"
+    ) |>
     mutate(
-      cum_pct = cumsum(percentage),
-      # If there's a center, start from -center_pct/2, otherwise start from 0
-      offset = if (has_center && isFALSE(center_separate)) {
-        first(plot_data$percentage[
-          plot_data$response_type == "center" &
-            plot_data$item_var == first(item_var)
-        ])
+      center_pct = if (has_center && isFALSE(center_separate)) {
+        ifelse(is.na(center_pct), 0, center_pct)
       } else {
         0
-      }
+      },
+      x_start = -(cum_pct + center_pct / 2),
+      x_end = -(cum_pct - percentage + center_pct / 2)
     ) |>
-    ungroup() |>
-    mutate(
-      x_start = -(cum_pct + offset / 2),
-      x_end = -(cum_pct - percentage + offset / 2)
-    ) |>
-    select(-offset)
+    select(-center_pct)
 
   # For positive responses: stack from the center going right
   positive_data <- plot_data |>
     filter(response_type == "positive") |>
     group_by(item_var) |>
     arrange(item_var, response_var) |> # Least positive closest to center
+    mutate(cum_pct = cumsum(percentage)) |>
+    ungroup() |>
+    left_join(
+      plot_data |>
+        filter(response_type == "center") |>
+        select(item_var, center_pct = percentage),
+      by = "item_var"
+    ) |>
     mutate(
-      cum_pct = cumsum(percentage),
-      # If there's a center, start from center_pct/2, otherwise start from 0
-      offset = if (has_center && isFALSE(center_separate)) {
-        first(plot_data$percentage[
-          plot_data$response_type == "center" &
-            plot_data$item_var == first(item_var)
-        ])
+      center_pct = if (has_center && isFALSE(center_separate)) {
+        ifelse(is.na(center_pct), 0, center_pct)
       } else {
         0
-      }
+      },
+      x_start = cum_pct - percentage + center_pct / 2,
+      x_end = cum_pct + center_pct / 2
     ) |>
-    ungroup() |>
-    mutate(
-      x_start = cum_pct - percentage + offset / 2,
-      x_end = cum_pct + offset / 2
-    ) |>
-    select(-offset)
+    select(-center_pct)
 
   # Handle center data - keep it separate initially to control positioning
   center_data_calc <- plot_data |>
